@@ -4,12 +4,30 @@ import 'package:provider/provider.dart';
 import 'package:real_time_expense_tracker/presentation/providers/auth_provider.dart';
 import 'package:real_time_expense_tracker/presentation/screens/auth/login_screen.dart';
 
+// Import required classes from the auth provider
+import 'package:real_time_expense_tracker/core/errors/failures.dart';
+import 'package:real_time_expense_tracker/domain/entities/user.dart';
+
+// Import enums needed for UserPreferences
+enum ThemeMode { system, light, dark }
+
+enum CategorySortBy { name, usage, amount, custom }
+
+enum ExpenseSortBy { date, amount, category, title }
+
 // Mock that extends ChangeNotifier properly
 class MockAuthProvider extends ChangeNotifier implements AuthProvider {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isAuthenticated = false;
-  
+
+  // Additional properties to match AuthProvider interface
+  AuthStatus _status = AuthStatus.initial;
+  User? _currentUser;
+  Failure? _failure;
+  String? _authToken;
+  bool _rememberMe = false;
+
   // Track method calls
   int loginCallCount = 0;
   String? lastEmailUsed;
@@ -25,6 +43,28 @@ class MockAuthProvider extends ChangeNotifier implements AuthProvider {
 
   @override
   bool get isAuthenticated => _isAuthenticated;
+
+  // Additional getters to match AuthProvider interface
+  @override
+  AuthStatus get status => _status;
+
+  @override
+  User? get currentUser => _currentUser;
+
+  @override
+  Failure? get failure => _failure;
+
+  @override
+  String? get authToken => _authToken;
+
+  @override
+  bool get rememberMe => _rememberMe;
+
+  @override
+  bool get hasError => _status == AuthStatus.error;
+
+  @override
+  Stream<Object?> get authState => Stream.value(_currentUser);
 
   @override
   Future<bool> login({
@@ -43,25 +83,141 @@ class MockAuthProvider extends ChangeNotifier implements AuthProvider {
   void clearError() {
     clearErrorCallCount++;
     _errorMessage = null;
-    notifyListeners();
+    if (_status == AuthStatus.error) {
+      _setStatus(
+        _currentUser != null
+            ? AuthStatus.authenticated
+            : AuthStatus.unauthenticated,
+      );
+    }
+  }
+
+  @override
+  Future<void> logout() async {
+    _currentUser = null;
+    _authToken = null;
+    _rememberMe = false;
+    _setStatus(AuthStatus.unauthenticated);
+  }
+
+  @override
+  Future<bool> register({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    // For testing purposes, simulate successful registration
+    _currentUser = User(
+      id: 'test-id',
+      email: email,
+      name: name,
+      // Add other required fields as needed
+    );
+    _setStatus(AuthStatus.authenticated);
+    return true;
+  }
+
+  @override
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<bool> forgotPassword({required String email}) async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<bool> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<bool> verifyEmail({required String token}) async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<bool> resendVerificationEmail() async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<bool> deleteAccount({required String password}) async {
+    return true; // Simulate success
+  }
+
+  @override
+  Future<void> refreshToken() async {
+    // Simulate refresh token operation
+  }
+
+  @override
+  Future<bool> updateProfile({
+    String? name,
+    String? email,
+    String? phoneNumber,
+    String? avatarUrl,
+  }) async {
+    if (_currentUser != null) {
+      _currentUser = _currentUser!.copyWith(
+        name: name ?? _currentUser!.name,
+        email: email ?? _currentUser!.email,
+        phoneNumber: phoneNumber ?? _currentUser!.phoneNumber,
+      );
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  Future<bool> updateUserPreferences(UserPreferences preferences) async {
+    if (_currentUser != null) {
+      _currentUser = _currentUser!.copyWith(preferences: preferences);
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  UserPreferences? getUserPreferences() {
+    return _currentUser?.preferences;
   }
 
   // Methods to set values for testing
   void setIsLoading(bool value) {
     _isLoading = value;
+    _status = value ? AuthStatus.loading : _status;
     notifyListeners();
   }
 
   void setErrorMessage(String? value) {
     _errorMessage = value;
+    if (value != null) {
+      _setStatus(AuthStatus.error);
+    }
     notifyListeners();
   }
 
   void setIsAuthenticated(bool value) {
     _isAuthenticated = value;
+    _status = value ? AuthStatus.authenticated : AuthStatus.unauthenticated;
     notifyListeners();
   }
-  
+
+  void _setStatus(AuthStatus status) {
+    _status = status;
+    notifyListeners();
+  }
+
   // Reset tracking
   void resetTracking() {
     loginCallCount = 0;
@@ -102,7 +258,8 @@ void main() {
       // Assert
       expect(find.text('Welcome Back'), findsOneWidget);
       expect(find.text('Sign in to continue'), findsOneWidget);
-      expect(find.byType(TextFormField), findsNWidgets(2)); // Email and password fields
+      expect(find.byType(TextFormField),
+          findsNWidgets(2)); // Email and password fields
       expect(find.text('Sign In'), findsOneWidget);
       expect(find.text("Don't have an account?"), findsOneWidget);
       expect(find.text('Sign Up'), findsOneWidget);
@@ -318,12 +475,12 @@ void main() {
 
       // Find checkbox by type
       final checkboxFinder = find.byType(Checkbox);
-      
+
       if (checkboxFinder.evaluate().isNotEmpty) {
         // Tap checkbox if it exists
         await tester.tap(checkboxFinder);
         await tester.pump();
-        
+
         // The checkbox state should have changed
         final checkbox = tester.widget<Checkbox>(checkboxFinder);
         expect(checkbox.value, isNotNull);
