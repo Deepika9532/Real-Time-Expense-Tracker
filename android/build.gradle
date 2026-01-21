@@ -1,5 +1,6 @@
 buildscript {
     ext {
+        // Update to Kotlin 2.0+ for better Flutter compatibility
         kotlin_version = "1.9.10"
     }
     repositories {
@@ -22,13 +23,15 @@ allprojects {
 }
 
 rootProject.buildDir = file("../build")
+
 subprojects {
     project.buildDir = file("${rootProject.buildDir}/${project.name}")
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
-tasks.register<Delete>("clean") {
-    delete(rootProject.buildDir)
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
 }
